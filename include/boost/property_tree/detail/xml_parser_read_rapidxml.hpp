@@ -15,10 +15,24 @@
 #include <boost/property_tree/detail/xml_parser_flags.hpp>
 #include <boost/property_tree/detail/xml_parser_utils.hpp>
 #include <boost/property_tree/detail/rapidxml.hpp>
+#include <boost/utility/enable_if.hpp>
 #include <vector>
+#include <cstdio>
+#include <iostream>
 
 namespace boost { namespace property_tree { namespace xml_parser
 {
+    template<typename KEY_TYPE, typename NODE_TYPE>
+    KEY_TYPE make_name(const NODE_TYPE* node)
+    {
+        return KEY_TYPE{node->name(), node->name_size()};
+    }
+
+    template<typename DATA_TYPE, typename NODE_TYPE>
+    DATA_TYPE make_value(const NODE_TYPE* node)
+    {
+        return DATA_TYPE{node->value(), node->value_size()};
+    }
 
     template<class Ptree, class Ch>
     void read_xml_node(detail::rapidxml::xml_node<Ch> *node,
@@ -31,7 +45,7 @@ namespace boost { namespace property_tree { namespace xml_parser
             case node_element: 
             {
                 // Create node
-                Ptree &pt_node = pt.push_back(std::make_pair(node->name(),
+                Ptree &pt_node = pt.push_back(std::make_pair(make_name<typename Ptree::key_type>(node),
                                                              Ptree()))->second;
 
                 // Copy attributes
@@ -43,8 +57,8 @@ namespace boost { namespace property_tree { namespace xml_parser
                          attr; attr = attr->next_attribute())
                     {
                         Ptree &pt_attr = pt_attr_root.push_back(
-                            std::make_pair(attr->name(), Ptree()))->second;
-                        pt_attr.data() = typename Ptree::key_type(attr->value(), attr->value_size());
+                            std::make_pair(make_name<typename Ptree::key_type>(attr), Ptree()))->second;
+                        pt_attr.data() = make_value<typename Ptree::data_type>(attr);
                     }
                 }
 
@@ -61,9 +75,9 @@ namespace boost { namespace property_tree { namespace xml_parser
             {
                 if (flags & no_concat_text)
                     pt.push_back(std::make_pair(xmltext<typename Ptree::key_type>(),
-                                                Ptree(node->value())));
+                                                Ptree(make_value<typename Ptree::data_type>(node))));
                 else
-                    pt.data() += typename Ptree::key_type(node->value(), node->value_size());
+                    pt.data() += make_value<typename Ptree::data_type>(node);
             }
             break;
 
@@ -72,7 +86,7 @@ namespace boost { namespace property_tree { namespace xml_parser
             {
                 if (!(flags & no_comments))
                     pt.push_back(std::make_pair(xmlcomment<typename Ptree::key_type>(),
-                                    Ptree(typename Ptree::key_type(node->value(), node->value_size()))));
+                                                Ptree(make_value<typename Ptree::data_type>(node))));
             }
             break;
 
@@ -103,19 +117,18 @@ namespace boost { namespace property_tree { namespace xml_parser
 
         try {
             // Parse using appropriate flags
-            const int f_tws = parse_normalize_whitespace
+            const int f_default = parse_no_string_terminators;
+            const int f_tws = f_default | parse_normalize_whitespace
                             | parse_trim_whitespace;
-            const int f_c = parse_comment_nodes;
+            const int f_c = f_default | parse_comment_nodes;
             // Some compilers don't like the bitwise or in the template arg.
-            const int f_tws_c = parse_normalize_whitespace
-                              | parse_trim_whitespace
-                              | parse_comment_nodes;
+            const int f_tws_c = f_tws | parse_comment_nodes;
             xml_document<Ch> doc;
             if (flags & no_comments) {
                 if (flags & trim_whitespace)
                     doc.BOOST_NESTED_TEMPLATE parse<f_tws>(&v.front());
                 else
-                    doc.BOOST_NESTED_TEMPLATE parse<0>(&v.front());
+                    doc.BOOST_NESTED_TEMPLATE parse<f_default>(&v.front());
             } else {
                 if (flags & trim_whitespace)
                     doc.BOOST_NESTED_TEMPLATE parse<f_tws_c>(&v.front());
